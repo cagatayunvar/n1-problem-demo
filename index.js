@@ -3,13 +3,12 @@ const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 
 const app = express();
-// Render'ın atadığı portu kullan, yoksa 3000'den aç
 const port = process.env.PORT || 3000;
 
-// Statik dosyaları (HTML, CSS, JS) 'public' klasöründen oku
+// Statik dosyalar için 'public' klasörünü ana dizinle birleştirerek tanıtıyoruz
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. VERİTABANI BAĞLANTISI (BULUT/AIVEN UYUMLU) ---
+// --- 1. VERİTABANI BAĞLANTISI (AIVEN VE RENDER UYUMLU) ---
 const sequelize = new Sequelize(
   process.env.DB_NAME, 
   process.env.DB_USER, 
@@ -22,9 +21,12 @@ const sequelize = new Sequelize(
       ssl: {
         require: true,
         rejectUnauthorized: false
-      }
+      },
+      // Tarih hatasını (0000-00-00) çözmek için eklenen ayarlar
+      dateStrings: true,
+      typeCast: true
     },
-    logging: false // Konsolun çok kalabalık olmaması için
+    logging: false
   }
 );
 
@@ -42,7 +44,7 @@ Book.belongsTo(Author, { as: 'author', foreignKey: 'authorId' });
 
 // --- 3. API UÇ NOKTALARI (ROUTES) ---
 
-// Ana sayfa için index.html'i zorla gönder
+// Ana sayfa için index.html'i zorla gönderen garanti rota
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -52,10 +54,8 @@ app.get('/hatali', async (req, res) => {
   try {
     const sqlLogs = [];
     const logger = (sql) => sqlLogs.push(sql);
-
     const authors = await Author.findAll({ logging: logger });
     const result = [];
-    
     for (const author of authors) {
       const books = await Book.findAll({ 
         where: { authorId: author.id },
@@ -74,12 +74,10 @@ app.get('/dogru', async (req, res) => {
   try {
     const sqlLogs = [];
     const logger = (sql) => sqlLogs.push(sql);
-
     const authors = await Author.findAll({
       include: [{ model: Book, as: 'books' }],
       logging: logger
     });
-    
     const result = authors.map(a => ({ yazarAdi: a.name, kitaplar: a.books }));
     res.json({ veri: result, loglar: sqlLogs });
   } catch (error) {
@@ -87,20 +85,20 @@ app.get('/dogru', async (req, res) => {
   }
 });
 
-// Veritabanını eşitle ve sunucuyu başlat
+// --- 4. VERİTABANI SENKRONİZASYONU VE BAŞLATMA ---
 sequelize.sync({ alter: true }).then(async () => {
-  // Eğer veritabanı boşsa örnek veriler ekle
+  // Veritabanı boşsa örnek veriler ekleyerek 'forEach' hatasını önlüyoruz
   const count = await Author.count();
   if (count === 0) {
     const yazar = await Author.create({ name: 'Orhan Pamuk' });
     await Book.create({ title: 'Kara Kitap', authorId: yazar.id });
     await Book.create({ title: 'Yeni Hayat', authorId: yazar.id });
-    console.log("✅ Örnek veriler yüklendi!");
+    console.log("✅ Örnek veriler başarıyla yüklendi!");
   }
-
+  
   app.listen(port, () => {
     console.log(`✅ Sunucu Aktif! Port: ${port}`);
   });
+}).catch(err => {
+  console.error('❌ Veritabanı bağlantı hatası:', err);
 });
-  
-
