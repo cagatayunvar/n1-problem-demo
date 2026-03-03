@@ -5,10 +5,10 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Statik dosyalar için 'public' klasörünü ana dizinle birleştirerek tanıtıyoruz
+// Statik dosyaları (HTML/JS) Render üzerinde doğru klasörden bulması için
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. VERİTABANI BAĞLANTISI (AIVEN VE RENDER UYUMLU) ---
+// --- 1. VERİTABANI BAĞLANTISI (AIVEN & RENDER ÖZEL AYARLARI) ---
 const sequelize = new Sequelize(
   process.env.DB_NAME, 
   process.env.DB_USER, 
@@ -22,15 +22,20 @@ const sequelize = new Sequelize(
         require: true,
         rejectUnauthorized: false
       },
-      // HATA ÇÖZÜMÜ: Tarih formatı uyumsuzluğunu (0000-00-00) bu iki satır çözer
+      // KRİTİK HATA ÇÖZÜMÜ: MySQL'in tarih konusundaki katı modunu esnetir
       dateStrings: true,
       typeCast: true
+    },
+    // Sequelize'ın varsayılan tarih atamalarını MySQL formatıyla tam uyumlu yapar
+    define: {
+      timestamps: true,
+      freezeTableName: true
     },
     logging: false
   }
 );
 
-// --- 2. MODELLERİN TANIMLANMASI ---
+// --- 2. MODELLER ---
 const Author = sequelize.define('Author', {
   name: { type: DataTypes.STRING, allowNull: false }
 });
@@ -42,14 +47,14 @@ const Book = sequelize.define('Book', {
 Author.hasMany(Book, { as: 'books', foreignKey: 'authorId' });
 Book.belongsTo(Author, { as: 'author', foreignKey: 'authorId' });
 
-// --- 3. API UÇ NOKTALARI (ROUTES) ---
+// --- 3. YOLLAR (ROUTES) ---
 
-// Ana sayfa için index.html'i zorla gönderen garanti rota
+// Ana sayfa yönlendirmesi
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ❌ Hatalı (N+1) Çekim
+// ❌ N+1 Sorunu Olan İstek
 app.get('/hatali', async (req, res) => {
   try {
     const sqlLogs = [];
@@ -69,7 +74,7 @@ app.get('/hatali', async (req, res) => {
   }
 });
 
-// ✅ Doğru (Eager Loading) Çekim
+// ✅ Performanslı (Eager Loading) İstek
 app.get('/dogru', async (req, res) => {
   try {
     const sqlLogs = [];
@@ -85,21 +90,20 @@ app.get('/dogru', async (req, res) => {
   }
 });
 
-// --- 4. VERİTABANI SENKRONİZASYONU VE BAŞLATMA ---
-// { alter: true } tablonun yapısını Aiven'a göre günceller
+// --- 4. BAŞLATMA VE OTOMATİK VERİ EKLEME ---
 sequelize.sync({ alter: true }).then(async () => {
-  // Veritabanı boşsa örnek veriler ekleyerek arayüzdeki hatayı önlüyoruz
+  // Veritabanı boşsa "forEach" hatasını önlemek için örnek veri ekler
   const count = await Author.count();
   if (count === 0) {
     const yazar = await Author.create({ name: 'Orhan Pamuk' });
     await Book.create({ title: 'Kara Kitap', authorId: yazar.id });
     await Book.create({ title: 'Yeni Hayat', authorId: yazar.id });
-    console.log("✅ Örnek veriler veritabanına eklendi!");
+    console.log("✅ Örnek veriler veritabanına başarıyla eklendi!");
   }
   
   app.listen(port, () => {
     console.log(`✅ Sunucu Aktif! Port: ${port}`);
   });
 }).catch(err => {
-  console.error('❌ Başlatma hatası:', err);
+  console.error('❌ Bağlantı Başarısız:', err);
 });
