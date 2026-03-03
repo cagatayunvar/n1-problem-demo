@@ -22,7 +22,7 @@ const sequelize = new Sequelize(
         require: true,
         rejectUnauthorized: false
       },
-      // Tarih hatasını (0000-00-00) çözmek için eklenen ayarlar
+      // HATA ÇÖZÜMÜ: Tarih formatı uyumsuzluğunu (0000-00-00) bu iki satır çözer
       dateStrings: true,
       typeCast: true
     },
@@ -86,19 +86,20 @@ app.get('/dogru', async (req, res) => {
 });
 
 // --- 4. VERİTABANI SENKRONİZASYONU VE BAŞLATMA ---
+// { alter: true } tablonun yapısını Aiven'a göre günceller
 sequelize.sync({ alter: true }).then(async () => {
-  // Veritabanı boşsa örnek veriler ekleyerek 'forEach' hatasını önlüyoruz
+  // Veritabanı boşsa örnek veriler ekleyerek arayüzdeki hatayı önlüyoruz
   const count = await Author.count();
   if (count === 0) {
     const yazar = await Author.create({ name: 'Orhan Pamuk' });
     await Book.create({ title: 'Kara Kitap', authorId: yazar.id });
     await Book.create({ title: 'Yeni Hayat', authorId: yazar.id });
-    console.log("✅ Örnek veriler başarıyla yüklendi!");
+    console.log("✅ Örnek veriler veritabanına eklendi!");
   }
   
   app.listen(port, () => {
     console.log(`✅ Sunucu Aktif! Port: ${port}`);
   });
 }).catch(err => {
-  console.error('❌ Veritabanı bağlantı hatası:', err);
+  console.error('❌ Başlatma hatası:', err);
 });
