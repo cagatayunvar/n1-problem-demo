@@ -3,90 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N+1 Problem Demo</title>
+    <title>N+1 Performans Testi</title>
     <style>
-        :root {
-            --primary: #2563eb;
-            --bg: #f8fafc;
-            --text: #1e293b;
-        }
-
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 1000px; /* PC'de çok yayılmasın diye sınır */
-        }
-
-        h1 { font-size: 1.5rem; text-align: center; }
-
-        /* BUTONLAR: Mobilde alt alta, PC'de yan yana */
-        .button-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap; /* Mobilde sığmazsa aşağı kaydır */
-        }
-
-        button {
-            flex: 1; /* Eşit genişlik */
-            min-width: 160px; /* Mobilde çok küçülmesin */
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background: var(--primary);
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        /* ANA PANEL: Mobilde alt alta, PC'de yan yana (Grid) */
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr; /* Mobilde tek sütun */
-            gap: 20px;
-        }
-
-        @media (min-width: 768px) {
-            .grid {
-                grid-template-columns: 1fr 1.5fr; /* PC'de iki sütun */
-            }
-            h1 { font-size: 2rem; }
-        }
-
-        .card {
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-
-        #terminal {
-            background: #0f172a;
-            color: #38bdf8;
-            padding: 15px;
-            border-radius: 12px;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            overflow-x: auto;
-            min-height: 200px;
-            max-height: 400px;
-        }
-
-        .yazar-box {
-            border-bottom: 1px solid #e2e8f0;
-            padding: 10px 0;
-        }
+        :root { --primary: #2563eb; --bg: #f8fafc; --text: #1e293b; }
+        body { font-family: -apple-system, system-ui, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 1000px; }
+        h1 { font-size: 1.5rem; text-align: center; margin-bottom: 20px; }
+        .button-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        button { flex: 1; min-width: 140px; padding: 12px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; transition: transform 0.1s; }
+        button:active { transform: scale(0.98); }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        @media (min-width: 768px) { .grid { grid-template-columns: 1fr 1.5fr; } }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .terminal-header { display: flex; justify-content: space-between; align-items: center; color: white; margin-bottom: 10px; }
+        #query-count { background: #ef4444; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        #terminal { background: #0f172a; color: #38bdf8; padding: 15px; border-radius: 12px; font-family: 'Courier New', monospace; font-size: 12px; overflow-x: auto; min-height: 250px; max-height: 450px; border: 1px solid #1e293b; }
+        .yazar-box { border-bottom: 1px solid #e2e8f0; padding: 12px 0; }
+        .yazar-box:last-child { border: none; }
     </style>
 </head>
 <body>
@@ -101,13 +34,16 @@
 
     <div class="grid">
         <div class="card">
-            <h3>📊 Veri Listesi</h3>
-            <div id="result">Henüz veri çekilmedi.</div>
+            <h3 style="margin-top:0">📊 Veri Listesi</h3>
+            <div id="result">Butonlara basarak testi başlatın.</div>
         </div>
         
         <div class="card" style="background: #0f172a;">
-            <h3 style="color: white; margin-top: 0;">💻 SQL Terminal (Log)</h3>
-            <div id="terminal">> Sorgu bekleniyor...</div>
+            <div class="terminal-header">
+                <span>💻 SQL Terminal (Log)</span>
+                <span id="query-count">Sorgu: 0</span>
+            </div>
+            <div id="terminal">> Bekleniyor...</div>
         </div>
     </div>
 </div>
@@ -116,29 +52,39 @@
     async function fetchData(url) {
         const resultDiv = document.getElementById('result');
         const terminalDiv = document.getElementById('terminal');
+        const countSpan = document.getElementById('query-count');
         
-        resultDiv.innerHTML = "Yükleniyor...";
-        terminalDiv.innerHTML = "> Sorgu gönderiliyor...";
+        resultDiv.innerHTML = "⌛ Yükleniyor...";
+        terminalDiv.innerHTML = "> Veritabanına bağlanılıyor...";
+        countSpan.innerText = "Sorgu: 0";
+        countSpan.style.background = "#64748b"; // Gri (Bekleme)
 
         try {
             const response = await fetch(url);
             const data = await response.json();
 
-            // Verileri Yazdır
+            // Verileri Göster
             resultDiv.innerHTML = data.veri.map(yazar => `
                 <div class="yazar-box">
                     <strong>👤 ${yazar.yazarAdi}</strong><br>
-                    <small>📚 ${yazar.kitaplar.map(k => k.title).join(', ')}</small>
+                    <span style="color: #64748b; font-size: 0.9em;">📚 ${yazar.kitaplar.map(k => k.title).join(', ')}</span>
                 </div>
             `).join('');
 
-            // SQL Loglarını Yazdır
+            // SQL Loglarını ve Sorgu Sayısını Göster
+            const queryCount = data.loglar.length;
+            countSpan.innerText = "Sorgu: " + queryCount;
+            
+            // Eğer sorgu 1'den fazlaysa kırmızı (Hatalı), 1 ise yeşil (Doğru) yap
+            countSpan.style.background = queryCount > 1 ? "#ef4444" : "#10b981";
+
             terminalDiv.innerHTML = data.loglar.map(log => 
                 `<span style="color: #94a3b8;">[SQL]</span> ${log}`
             ).join('<br><br>');
 
         } catch (err) {
-            resultDiv.innerHTML = "Bir hata oluştu: " + err.message;
+            resultDiv.innerHTML = "❌ Hata: " + err.message;
+            terminalDiv.innerHTML = "> Bağlantı hatası oluştu.";
         }
     }
 </script>
