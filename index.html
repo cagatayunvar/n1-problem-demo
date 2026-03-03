@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>N+1 Problemi Canlı Test</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .header { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
+        .buttons { display: flex; justify-content: center; gap: 15px; margin-top: 15px; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; color: white; transition: 0.3s; font-weight: bold; }
+        .btn-red { background-color: #e74c3c; }
+        .btn-red:hover { background-color: #c0392b; }
+        .btn-green { background-color: #2ecc71; }
+        .btn-green:hover { background-color: #27ae60; }
+        
+        /* Ana İçerik Alanı (Veriler ve Terminal yanyana) */
+        .content-area { display: flex; gap: 20px; }
+        .data-panel { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .card { background: #f9f9f9; border-left: 5px solid #3498db; padding: 15px; margin-bottom: 15px; border-radius: 4px; }
+        .card h3 { margin-top: 0; color: #2c3e50; }
+        ul { margin: 0; padding-left: 20px; }
+        
+        /* Sanal Terminal Tasarımı */
+        .terminal-panel { flex: 1; background: #1e1e1e; color: #00ff00; padding: 20px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; box-shadow: 0 4px 8px rgba(0,0,0,0.5); overflow-x: auto; }
+        .terminal-panel h3 { color: #fff; margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .log-line { margin-bottom: 15px; word-break: break-all; }
+        .badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 12px; font-size: 14px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>N+1 Problemi Simülasyonu</h1>
+        <p>Aşağıdaki butonlara tıklayarak veritabanına atılan sorguları "Canlı Terminal" ekranında izleyin.</p>
+        <div class="buttons">
+            <button class="btn-red" onclick="verileriGetir('/hatali', 'red')">❌ Hatalı (N+1) Çek</button>
+            <button class="btn-green" onclick="verileriGetir('/dogru', 'green')">✅ Doğru (Eager) Çek</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <div class="data-panel" id="veriAlani">
+            <h3 style="text-align: center; color: #777;">Önce bir seçim yapın...</h3>
+        </div>
+
+        <div class="terminal-panel" id="terminalAlani">
+            <h3>>_ Veritabanı Terminali</h3>
+            <div id="loglar" style="color: #888;">// Atılan SQL sorguları burada görünecek...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function verileriGetir(url, color) {
+        const veriAlani = document.getElementById('veriAlani');
+        const loglar = document.getElementById('loglar');
+        
+        veriAlani.innerHTML = "<h3 style='text-align:center;'>Veriler Çekiliyor...</h3>";
+        loglar.innerHTML = "Sorgular veritabanına iletiliyor...";
+
+        try {
+            const response = await fetch(url);
+            // Gelen JSON datasını yeni yapımıza göre karşılıyoruz (veri ve loglar)
+            const sonuc = await response.json(); 
+
+            // 1. Verileri Ekrana Çizme
+            let html = "";
+            sonuc.veri.forEach(yazar => {
+                html += `
+                <div class="card">
+                    <h3>👤 ${yazar.yazarAdi}</h3>
+                    <ul>`;
+                yazar.kitaplar.forEach(kitap => { html += `<li>📖 ${kitap.title}</li>`; });
+                html += `</ul></div>`;
+            });
+            veriAlani.innerHTML = html;
+
+            // 2. Terminal Loglarını Ekrana Çizme
+            let terminalHtml = `<p style="color: white;">Toplam atılan sorgu sayısı: <span class="badge" style="background-color: ${color}">${sonuc.loglar.length}</span></p>`;
+            
+            sonuc.loglar.forEach((log, index) => {
+                // SQL metnindeki "Executing (default): " kısmını temizleyip daha şık gösterelim
+                let temizLog = log.replace("Executing (default): ", "");
+                terminalHtml += `<div class="log-line"><strong>[Sorgu ${index + 1}]:</strong><br> ${temizLog}</div>`;
+            });
+            
+            loglar.innerHTML = terminalHtml;
+
+        } catch (error) {
+            veriAlani.innerHTML = `<p style="color:red;">Bir hata oluştu: ${error.message}</p>`;
+            loglar.innerHTML = "Bağlantı hatası.";
+        }
+    }
+</script>
+
+</body>
+</html>
