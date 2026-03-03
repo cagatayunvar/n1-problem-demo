@@ -2,16 +2,28 @@ const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
 
 const app = express();
-const port = 3000;
-// public klasöründeki HTML, CSS dosyalarını dışarıya açar
+// Bulut sunucunun vereceği portu veya yerelde 3000'i kullan
+const port = process.env.PORT || 3000;
+
 app.use(express.static('public'));
 
-// --- 1. VERİTABANI BAĞLANTISI ---
-const sequelize = new Sequelize('n1_demo', 'root', '', {
-  host: 'localhost',
-  dialect: 'mysql',
-  logging: console.log 
-});
+// --- 1. VERİTABANI BAĞLANTISI (BULUT UYUMLU) ---
+const sequelize = new Sequelize(
+  process.env.DB_NAME || 'n1_demo', 
+  process.env.DB_USER || 'root', 
+  process.env.DB_PASS || '123456', 
+  {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
+    dialect: 'mysql',
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false // Bulut veritabanları (Aiven) SSL bağlantısı ister
+      }
+    }
+  }
+);
 
 // --- 2. MODELLERİ TANIMLAMA ---
 const Author = sequelize.define('Author', {
@@ -92,4 +104,5 @@ app.listen(port, async () => {
   console.log(`\n✅ Sunucu çalışıyor! Tarayıcınızda şu linkleri test edebilirsiniz:`);
   console.log(`❌ N+1 Testi: http://localhost:${port}/hatali`);
   console.log(`✅ Doğru Test: http://localhost:${port}/dogru\n`);
+
 });
