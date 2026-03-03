@@ -3,10 +3,9 @@ const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 
 const app = express();
-// Render'ın atadığı portu kullan, yoksa 3000'den aç
 const port = process.env.PORT || 3000;
 
-// Statik dosyaları (HTML, JS) 'public' klasöründen okuması için yol tanımı
+// Statik dosyaları (HTML, JS) Render üzerinde doğru klasörden bulması için
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- 1. VERİTABANI BAĞLANTISI (AIVEN & RENDER UYUMLU) ---
@@ -23,7 +22,6 @@ const sequelize = new Sequelize(
         require: true,
         rejectUnauthorized: false
       },
-      // MySQL'in katı tarih kuralını (0000-00-00 hatası) çözen kritik ayarlar
       dateStrings: true,
       typeCast: true
     },
@@ -35,7 +33,7 @@ const sequelize = new Sequelize(
   }
 );
 
-// --- 2. MODELLERİN TANIMLANMASI ---
+// --- 2. MODELLER ---
 const Author = sequelize.define('Author', {
   name: { type: DataTypes.STRING, allowNull: false }
 });
@@ -47,14 +45,13 @@ const Book = sequelize.define('Book', {
 Author.hasMany(Book, { as: 'books', foreignKey: 'authorId' });
 Book.belongsTo(Author, { as: 'author', foreignKey: 'authorId' });
 
-// --- 3. API UÇ NOKTALARI (ROUTES) ---
+// --- 3. YOLLAR (ROUTES) ---
 
-// Ana sayfa için index.html'i gönderen garanti rota
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ❌ Hatalı (N+1) Çekim: Her yazar için ayrı sorgu atar
+// ❌ N+1 Sorunu Olan İstek
 app.get('/hatali', async (req, res) => {
   try {
     const sqlLogs = [];
@@ -74,7 +71,7 @@ app.get('/hatali', async (req, res) => {
   }
 });
 
-// ✅ Doğru (Eager Loading) Çekim: Tek sorguda JOIN ile her şeyi getirir
+// ✅ Performanslı (Eager Loading) İstek
 app.get('/dogru', async (req, res) => {
   try {
     const sqlLogs = [];
@@ -90,27 +87,32 @@ app.get('/dogru', async (req, res) => {
   }
 });
 
-// --- 4. VERİTABANI SENKRONİZASYONU VE BAŞLATMA ---
+// --- 4. BAŞLATMA VE AKILLI VERİ KONTROLÜ ---
+// 'alter: true' kullanarak mevcut verileri silmeden yapıyı güncelliyoruz
 sequelize.sync({ alter: true }).then(async () => {
-  // Eğer veritabanı boşsa örnek veriler ekleyerek arayüz hatalarını önler
   const count = await Author.count();
-  if (count === 0) {
-    const yazar1 = await Author.create({ name: 'Orhan Pamuk' });
-    await Book.create({ title: 'Kara Kitap', authorId: yazar1.id });
-    await Book.create({ title: 'Yeni Hayat', authorId: yazar1.id });
+  
+  // Eğer yazar sayısı 3'ten azsa (eksik veri varsa) ekleme yap
+  if (count < 3) {
+    console.log("📝 Eksik veriler tamamlanıyor...");
     
-    const yazar2 = await Author.create({ name: 'Yaşar Kemal' });
-    await Book.create({ title: 'İnce Memed', authorId: yazar2.id });
+    // Mevcut yazarları kontrol et veya direkt ekle (basitlik için toplu ekleme)
+    const [y1] = await Author.findOrCreate({ where: { name: 'Orhan Pamuk' } });
+    await Book.findOrCreate({ where: { title: 'Kara Kitap', authorId: y1.id } });
+    await Book.findOrCreate({ where: { title: 'Yeni Hayat', authorId: y1.id } });
+    
+    const [y2] = await Author.findOrCreate({ where: { name: 'Yaşar Kemal' } });
+    await Book.findOrCreate({ where: { title: 'İnce Memed', authorId: y2.id } });
 
-    const yazar3 = await Author.create({ name: 'Sabahattin Ali' });
-    await Book.create({ title: 'Kürk Mantolu Madonna', authorId: yazar3.id });
+    const [y3] = await Author.findOrCreate({ where: { name: 'Sabahattin Ali' } });
+    await Book.findOrCreate({ where: { title: 'Kürk Mantolu Madonna', authorId: y3.id } });
     
-    console.log("✅ Örnek veriler başarıyla yüklendi!");
+    console.log("✅ Tüm yazarlar ve kitaplar güncellendi!");
   }
   
   app.listen(port, () => {
     console.log(`✅ Sunucu Aktif! Port: ${port}`);
   });
 }).catch(err => {
-  console.error('❌ Başlatma sırasında hata oluştu:', err);
+  console.error('❌ Bağlantı Başarısız:', err);
 });
