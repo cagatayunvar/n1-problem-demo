@@ -1,49 +1,57 @@
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
+const path = require('path');
 
 const app = express();
-// Bulut sunucunun vereceği portu veya yerelde 3000'i kullan
+// Render'ın atadığı portu kullan, yoksa 3000'den aç
 const port = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+// Statik dosyaları (HTML, CSS, JS) 'public' klasöründen oku
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. VERİTABANI BAĞLANTISI (BULUT UYUMLU) ---
+// --- 1. VERİTABANI BAĞLANTISI (BULUT/AIVEN UYUMLU) ---
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'n1_demo', 
-  process.env.DB_USER || 'root', 
-  process.env.DB_PASS || '123456', 
+  process.env.DB_NAME, 
+  process.env.DB_USER, 
+  process.env.DB_PASS, 
   {
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST,
     port: process.env.DB_PORT || 3306,
     dialect: 'mysql',
     dialectOptions: {
       ssl: {
         require: true,
-        rejectUnauthorized: false // Bulut veritabanları (Aiven) SSL bağlantısı ister
+        rejectUnauthorized: false
       }
-    }
+    },
+    logging: false // Konsolun çok kalabalık olmaması için
   }
 );
 
-// --- 2. MODELLERİ TANIMLAMA ---
+// --- 2. MODELLERİN TANIMLANMASI ---
 const Author = sequelize.define('Author', {
   name: { type: DataTypes.STRING, allowNull: false }
-}, { timestamps: false });
+});
 
 const Book = sequelize.define('Book', {
   title: { type: DataTypes.STRING, allowNull: false }
-}, { timestamps: false });
+});
 
 Author.hasMany(Book, { as: 'books', foreignKey: 'authorId' });
-Book.belongsTo(Author, { foreignKey: 'authorId' });
+Book.belongsTo(Author, { as: 'author', foreignKey: 'authorId' });
 
 // --- 3. API UÇ NOKTALARI (ROUTES) ---
 
-// ❌ Hatalı (N+1) Kullanım Linki
+// Ana sayfa için index.html'i zorla gönder
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ❌ Hatalı (N+1) Çekim
 app.get('/hatali', async (req, res) => {
   try {
-    const sqlLogs = []; // Atılan sorguları biriktireceğimiz sepet
-    const logger = (sql) => sqlLogs.push(sql); // Sequelize'a özel log yakalayıcı
+    const sqlLogs = [];
+    const logger = (sql) => sqlLogs.push(sql);
 
     const authors = await Author.findAll({ logging: logger });
     const result = [];
@@ -51,19 +59,17 @@ app.get('/hatali', async (req, res) => {
     for (const author of authors) {
       const books = await Book.findAll({ 
         where: { authorId: author.id },
-        logging: logger // Döngü içindeki her sorguyu sepete at
+        logging: logger 
       });
       result.push({ yazarAdi: author.name, kitaplar: books });
     }
-    
-    // Hem veriyi hem de yakaladığımız SQL sorgularını (logları) tarayıcıya gönder
     res.json({ veri: result, loglar: sqlLogs });
   } catch (error) {
     res.status(500).json({ hata: error.message });
   }
 });
 
-// ✅ Doğru (Eager Loading) Kullanım Linki
+// ✅ Doğru (Eager Loading) Çekim
 app.get('/dogru', async (req, res) => {
   try {
     const sqlLogs = [];
@@ -71,10 +77,9 @@ app.get('/dogru', async (req, res) => {
 
     const authors = await Author.findAll({
       include: [{ model: Book, as: 'books' }],
-      logging: logger // Tek atılan dev sorguyu sepete at
+      logging: logger
     });
     
-    // Veriyi formata uydur ve loglarla birlikte gönder
     const result = authors.map(a => ({ yazarAdi: a.name, kitaplar: a.books }));
     res.json({ veri: result, loglar: sqlLogs });
   } catch (error) {
@@ -82,27 +87,9 @@ app.get('/dogru', async (req, res) => {
   }
 });
 
-// --- 4. SUNUCUYU BAŞLATMA VE TEST VERİSİ EKLEME ---
-app.listen(port, async () => {
-  console.log(`Sunucu başlatılıyor...`);
-  
-  // Tabloları oluştur ve test verilerini ekle
-  await sequelize.sync({ force: true });
-  
-  const author1 = await Author.create({ name: 'J.R.R. Tolkien' });
-  await Book.bulkCreate([
-    { title: 'Yüzük Kardeşliği', authorId: author1.id },
-    { title: 'İki Kule', authorId: author1.id }
-  ]);
-
-  const author2 = await Author.create({ name: 'George Orwell' });
-  await Book.bulkCreate([
-    { title: '1984', authorId: author2.id },
-    { title: 'Hayvan Çiftliği', authorId: author2.id }
-  ]);
-
-  console.log(`\n✅ Sunucu çalışıyor! Tarayıcınızda şu linkleri test edebilirsiniz:`);
-  console.log(`❌ N+1 Testi: http://localhost:${port}/hatali`);
-  console.log(`✅ Doğru Test: http://localhost:${port}/dogru\n`);
-
+// Veritabanını eşitle ve sunucuyu başlat
+sequelize.sync().then(() => {
+  app.listen(port, () => {
+    console.log(`✅ Sunucu Aktif! Port: ${port}`);
+  });
 });
