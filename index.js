@@ -88,8 +88,19 @@ app.get('/dogru', async (req, res) => {
 });
 
 // Veritabanını eşitle ve sunucuyu başlat
-sequelize.sync().then(() => {
+sequelize.sync({ alter: true }).then(async () => {
+  // Eğer veritabanı boşsa örnek veriler ekle
+  const count = await Author.count();
+  if (count === 0) {
+    const yazar = await Author.create({ name: 'Orhan Pamuk' });
+    await Book.create({ title: 'Kara Kitap', authorId: yazar.id });
+    await Book.create({ title: 'Yeni Hayat', authorId: yazar.id });
+    console.log("✅ Örnek veriler yüklendi!");
+  }
+
   app.listen(port, () => {
     console.log(`✅ Sunucu Aktif! Port: ${port}`);
   });
 });
+  
+
